@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+.area {
+  fill: #a05d56;
+  clip-path: url(#clip);
+}
+
+.zoom {
+  cursor: move;
+  fill: none;
+  pointer-events: all;
+}
+
+body {
+  font: 10px sans-serif;
+}
+
+.axis .domain {
+  display: none;
+}
+
+</style>
+
+<body>
+  <center>
+    <h1>Usage Statistics</h1>
+  </center>
+
+  <div id="time_series">
+      <svg width="1300" height="490"></svg>
+  </div>
+
+  <div id="comp_dash">
+      <svg width="600" height="300"></svg>
+  </div>
+
+  <!-- <h2>Overall Visits</h2> -->
+
+
+
+  <script src="https://d3js.org/d3.v4.min.js"></script>
+  <script>
+
+  var svg = d3.select("#time_series svg"),
+      margin = {top: 10, right: 10, bottom: 85, left: 40},
+      margin2 = {top: 430, right: 20, bottom: 30, left: 40},
+      width = +svg.attr("width") - margin.left - margin.right,
+      height = +svg.attr("height") - margin.top - margin.bottom,
+      height2 = +svg.attr("height") - margin2.top - margin2.bottom;
+
+
+  var parseDate = d3.timeParse("%Y-%m-%d");
+  // var bisectDate = d3.bisector(function(d) { return d.date; }).left;
+
+  var time_x = d3.scaleTime().range([0, width]),
+      time_x2 = d3.scaleTime().range([0, width]),
+      time_y = d3.scaleLinear().range([height, 0]),
+      time_y2 = d3.scaleLinear().range([height2, 0]);
+
+  var xAxis = d3.axisBottom(time_x),
+      xAxis2 = d3.axisBottom(time_x2),
+      yAxis = d3.axisLeft(time_y);
+
+  var brush = d3.brushX()
+      .extent([[0, 0], [width, height2]])
+      .on("brush end", brushed);
+
+  var zoom = d3.zoom()
+      .scaleExtent([1, Infinity])
+      .translateExtent([[0, 0], [width, height]])
+      .extent([[0, 0], [width, height]])
+      .on("zoom", zoomed);
+
+  var area = d3.area()
+      .curve(d3.curveMonotoneX)
+      .x(function(d) { return time_x(d.date); })
+      .y0(height)
+      .y1(function(d) { return time_y(d.visits); });
+
+  var area2 = d3.area()
+      .curve(d3.curveMonotoneX)
+      .x(function(d) { return time_x2(d.date); })
+      .y0(height2)
+      .y1(function(d) { return time_y2(d.visits); });
+
+  svg.append("defs").append("clipPath")
+      .attr("id", "clip")
+    .append("rect")
+      .attr("width", width)
+      .attr("height", height);
+
+  var focus = svg.append("g")
+      .attr("class", "focus")
+      .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+  var context = svg.append("g")
+      .attr("class", "context")
+      .attr("transform", "translate(" + margin2.left + "," + margin2.top + ")");
+
+  
+  var parseDate = d3.timeParse("%Y-%m-%d");
+
+  function parse_line(line) {
+    line.date = parseDate(line.date);
+    line.visits = parseInt(line.visits); // converts string to number
+    return line;
+  }
+
+  d3.csv("visits_data.csv", parse_line, function(error, data) {
+    if (error) throw error;
+
+    time_x.domain(d3.extent(data, function(line) { return line.date; }));
+    time_y.domain([0, d3.max(data, function(line) { return line.visits; })]);
+    time_x2.domain(time_x.domain());
+    time_y2.domain(time_y.domain());
+
+    focus.append("path")
+        .datum(data)
+        .attr("class", "area")
+        .attr("d", area);
+
+    focus.append("g")
+        .attr("class", "axis axis--x")
+        .attr("transform", "translate(0," + height + ")")
+        .call(xAxis);
+
+    focus.append("g")
+        .attr("class", "axis axis--y")
+        .call(yAxis);
+
+    // svg.append("text")
+    //   .attr("transform", "rotate(-90)")
+    //   .attr("y", -2)
+    //   .attr("x",0 - (height / 2.5))
+    //   .attr("dy", "1em")
+    //   .style("text-anchor", "end")
+    //   .text("Visits"); 
+
+    svg.append("g")
+        .attr("class", "axis")
+        .call(d3.axisLeft(y).ticks(null, "s"))
+      .append("text")
+        .attr("x", 42)
+        .attr("y", 21)
+        .attr("dy", "0.32em")
+        .attr("fill", "#000")
+        .attr("font-weight", "bold")
+        .attr("text-anchor", "start")
+        .text("Visits"); 
+
+    context.append("path")
+        .datum(data)
+        .attr("class", "area")
+        .attr("d", area2);
+
+    context.append("g")
+        .attr("class", "axis axis--x")
+        .attr("transform", "translate(0," + height2 + ")")
+        .call(xAxis2);
+
+    context.append("g")
+        .attr("class", "brush")
+        .call(brush)
+        .call(brush.move, time_x.range());
+
+    svg.append("rect")
+        .attr("class", "zoom")
+        .attr("width", width)
+        .attr("height", height)
+        .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+        .call(zoom);
+  });
+
+  function brushed() {
+    if (d3.event.sourceEvent && d3.event.sourceEvent.type === "zoom"){
+      return; // ignore brush-by-zoom
+    }
+    var s = d3.event.selection || time_x2.range();
+    time_x.domain(s.map(time_x2.invert, time_x2));
+    focus.select(".area").attr("d", area);
+    focus.select(".axis--x").call(xAxis);
+    svg.select(".zoom").call(zoom.transform, d3.zoomIdentity
+        .scale(width / (s[1] - s[0]))
+        .translate(-s[0], 0));
+  }
+
+  function zoomed() {
+    if (d3.event.sourceEvent && d3.event.sourceEvent.type === "brush"){
+      return; // ignore zoom-by-brush
+    }
+    var t = d3.event.transform;
+    time_x.domain(t.rescaleX(time_x2).domain());
+    focus.select(".area").attr("d", area);
+    focus.select(".axis--x").call(xAxis);
+    context.select(".brush").call(brush.move, time_x.range().map(t.invertX, t));
+  }
+
+
+  // COMPANY AND DASHBOARD USAGE
+
+  var comp_dash = d3.select("#comp_dash svg"),
+      c_margin = {top: 20, right: 20, bottom: 30, left: 40},
+      c_width = +comp_dash.attr("width") - c_margin.left - c_margin.right,
+      c_height = +comp_dash.attr("height") - c_margin.top - c_margin.bottom,
+      comp_dash_g = comp_dash.append("g").attr("transform", "translate(" + c_margin.left + "," + c_margin.top + ")");
+
+  var x0 = d3.scaleBand()
+      .rangeRound([0, c_width])
+      .paddingInner(0.1);
+
+  var x1 = d3.scaleBand()
+      .padding(0.05);
+
+  var y = d3.scaleLinear()
+      .rangeRound([c_height, 0]);
+
+  var z = d3.scaleOrdinal()
+      .range(["#98abc5", "#8a89a6", "#7b6888", "#6b486b", "#a05d56", "#d0743c", "#ff8c00"]);
+
+  d3.csv("comp_dash_data.csv", function(csv_d, i, columns) {
+    for (var i = 1, n = columns.length; i < n; ++i) csv_d[columns[i]] = +csv_d[columns[i]];
+    return csv_d;
+  }, function(error, data) {
+    if (error) throw error;
+
+    var keys = data.columns.slice(1);
+
+    x0.domain(data.map(function(d) { return d.company; }));
+    x1.domain(keys).rangeRound([0, x0.bandwidth()]);
+    y.domain([0, d3.max(data, function(d) { return d3.max(keys, function(key) { return d[key]; }); })]).nice();
+
+    comp_dash_g.append("g")
+      .selectAll("g")
+      .data(data)
+      .enter().append("g")
+        .attr("transform", function(d) { return "translate(" + x0(d.company) + ",0)"; })
+      .selectAll("rect")
+      .data(function(d) { return keys.map(function(key) { return {key: key, value: d[key]}; }); })
+      .enter().append("rect")
+        .attr("x", function(d) { return x1(d.key); })
+        .attr("y", function(d) { return y(d.value); })
+        .attr("width", x1.bandwidth())
+        .attr("height", function(d) { return c_height - y(d.value); })
+        .attr("fill", function(d) { return z(d.key); });
+
+    comp_dash_g.append("g")
+        .attr("class", "axis")
+        .attr("transform", "translate(0," + c_height + ")")
+        .call(d3.axisBottom(x0));
+
+    comp_dash_g.append("g")
+        .attr("class", "axis")
+        .call(d3.axisLeft(y).ticks(null, "s"))
+      .append("text")
+        .attr("x", 2)
+        .attr("y", y(y.ticks().pop()) + 0.5)
+        .attr("dy", "0.32em")
+        .attr("fill", "#000")
+        .attr("font-weight", "bold")
+        .attr("text-anchor", "start")
+        .text("Visits");
+
+    var legend = comp_dash_g.append("g")
+        .attr("font-family", "sans-serif")
+        .attr("font-size", 10)
+        .attr("text-anchor", "end")
+      .selectAll("g")
+      .data(keys)
+      .enter().append("g")
+        .attr("transform", function(d, i) { return "translate(0," + i * 20 + ")"; });
+
+    legend.append("rect")
+        .attr("x", c_width - 19)
+        .attr("width", 19)
+        .attr("height", 19)
+        .attr("fill", z);
+
+    legend.append("text")
+        .attr("x", c_width - 24)
+        .attr("y", 9.5)
+        .attr("dy", "0.32em")
+        .text(function(d) { return d; });
+  });
+
+
+
+  </script>
+</center>
+</body>
